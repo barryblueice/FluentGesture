@@ -1,5 +1,5 @@
 import sys
-import json
+import msgpack
 import ctypes
 import numpy as np
 from ctypes import wintypes
@@ -9,26 +9,29 @@ from PySide6.QtGui import QPainter, QColor, QPen, QImage
 from scipy.optimize import linear_sum_assignment
 
 def frechet_distance(P, Q):
-    """计算离散弗雷歇距离 (Discrete Fréchet Distance)"""
     n, m = len(P), len(Q)
     if n == 0 or m == 0: return float('inf')
-    ca = np.ones((n, m)) * -1
-
-    def calculate(i, j):
-        if ca[i, j] > -1: return ca[i, j]
-        dist = np.linalg.norm(np.array(P[i]) - np.array(Q[j]))
-        if i == 0 and j == 0: ca[i, j] = dist
-        elif i > 0 and j == 0: ca[i, j] = max(calculate(i-1, 0), dist)
-        elif i == 0 and j > 0: ca[i, j] = max(calculate(0, j-1), dist)
-        elif i > 0 and j > 0: ca[i, j] = max(min(calculate(i-1, j), 
-                                                calculate(i-1, j-1), 
-                                                calculate(i, j-1)), dist)
-        else: ca[i, j] = float("inf")
-        return ca[i, j]
-
-    import sys
-    sys.setrecursionlimit(2000)
-    return calculate(n-1, m-1)
+    
+    P = np.array(P)
+    Q = np.array(Q)
+    
+    ca = np.full((n, m), -1.0)
+    
+    ca[0, 0] = np.linalg.norm(P[0] - Q[0])
+    
+    for i in range(1, n):
+        ca[i, 0] = max(ca[i-1, 0], np.linalg.norm(P[i] - Q[0]))
+    for j in range(1, m):
+        ca[0, j] = max(ca[0, j-1], np.linalg.norm(P[0] - Q[j]))
+    
+    for i in range(1, n):
+        for j in range(1, m):
+            dist = np.linalg.norm(P[i] - Q[j])
+            ca[i, j] = max(min(ca[i-1, j], 
+                               ca[i-1, j-1], 
+                               ca[i, j-1]), dist)
+            
+    return ca[n-1, m-1]
 
 def resample_points(points, num_points=30):
     if len(points) < 2: return points
@@ -109,7 +112,7 @@ class GestureDrawingWindow(QMainWindow):
         self.setWindowTitle("触摸板手势录制识别引擎 (R:录制 Space:清除)")
         self.setGeometry(100, 100, 1000, 700)
 
-        self.gesture_file = "gestures_db.json"
+        self.db_path = "gestures_db.msgpack"
         self.gesture_library = self.load_library()
         
         self.is_recording = False
@@ -129,13 +132,13 @@ class GestureDrawingWindow(QMainWindow):
 
     def load_library(self):
         try:
-            with open(self.gesture_file, 'r') as f:
-                return json.load(f)
+            with open(self.db_path, 'rb') as f:
+                return msgpack.unpackb(f.read(), use_list=True)
         except: return {}
 
     def save_library(self):
-        with open(self.gesture_file, 'w') as f:
-            json.dump(self.gesture_library, f)
+        with open(self.db_path, 'wb') as f:
+            f.write(msgpack.packb(self.gesture_library))
 
     def register_touchpad(self):
         rid = RAWINPUTDEVICE(0x0D, 0x05, 0x00000100, self.winId())
