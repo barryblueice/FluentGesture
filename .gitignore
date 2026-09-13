@@ -1,3 +1,10 @@
-*.lock
-*.json
 *.msgpack
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+*.iml
+build/
+coverage/
+__pycache__/
+gestures.json*
