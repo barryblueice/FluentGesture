@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "win32_window.h"
+#include "shortcut_capture.h"
 #include "touchpad_input.h"
 
 // A window that does nothing but host a Flutter view.
@@ -29,6 +30,8 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  std::unique_ptr<DesktopHost> desktop_;
+  std::unique_ptr<ShortcutCapture> shortcut_capture_;
   std::unique_ptr<TouchpadInput> touchpad_input_;
 };
 

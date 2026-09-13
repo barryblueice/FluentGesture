@@ -42,8 +42,7 @@ class GestureCapture {
     final dt = _lastTime == null ? 16 : math.max(1, timeMs - _lastTime!);
     _lastTime = timeMs;
     if (contacts.isEmpty) {
-      final result = GestureSample(
-          _strokes.map((s) => s.length == 1 ? [s.first, s.first] : s));
+      final result = GestureSample(_strokes);
       reset();
       return result.isValid ? result : null;
     }

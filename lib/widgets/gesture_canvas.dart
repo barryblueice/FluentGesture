@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import '../engine/gesture.dart';
 
 /// Displays touchpad frames without accepting mouse or touchscreen strokes.
@@ -8,75 +8,123 @@ class GestureCanvas extends StatelessWidget {
     required this.strokes,
     required this.paused,
     required this.recording,
+    this.height = 320,
+    this.onStartRecording,
   });
 
   final List<List<Point2>> strokes;
   final bool paused;
   final bool recording;
+  final double height;
+  final VoidCallback? onStartRecording;
 
   @override
   Widget build(BuildContext context) => Semantics(
-        label: '触摸板实时轨迹画布，仅用于显示',
-        child: IgnorePointer(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              height: 360,
-              width: double.infinity,
-              child: ColoredBox(
-                color: const Color(0xfff7f9fd),
-                child: Stack(children: [
+    // Keep one stable AX node as the painted trace and status widgets change.
+    // Expose their equivalent description here instead of merging transient
+    // descendants into the surrounding editor's semantics tree.
+    container: true,
+    excludeSemantics: true,
+    label: '触摸板手势画布',
+    value: paused
+        ? '已暂停'
+        : recording
+        ? '正在录制'
+        : strokes.isEmpty
+        ? '等待触摸板输入'
+        : '已保留 ${strokes.length} 条触摸轨迹',
+    hint: onStartRecording != null ? '点击开始录制，轨迹仅来自触摸板' : null,
+    button: onStartRecording != null,
+    onTap: onStartRecording,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTap: onStartRecording,
+      child: IgnorePointer(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            height: height,
+            width: double.infinity,
+            child: ColoredBox(
+              color: FluentTheme.of(context).brightness == Brightness.dark
+                  ? const Color(0xff252525)
+                  : const Color(0xfffafafa),
+              child: Stack(
+                children: [
                   Positioned.fill(
-                      child: CustomPaint(
-                          painter: TracePainter(strokes, grid: true))),
+                    child: CustomPaint(
+                      painter: TracePainter(strokes, grid: true),
+                    ),
+                  ),
                   if (strokes.isEmpty)
                     Center(
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(paused ? Icons.pause_circle_outline : Icons.gesture,
-                          size: 56,
-                          color: const Color(0xff2563eb).withAlpha(64)),
-                      const SizedBox(height: 14),
-                      Text(
-                          paused
-                              ? '手势采集已暂停'
-                              : recording
-                                  ? '请在触摸板上完成手势'
-                                  : '等待触摸板手势',
-                          style: const TextStyle(color: Color(0xff718096))),
-                      const SizedBox(height: 8),
-                      const Text('轨迹将在这里显示 · Space 清空',
-                          style: TextStyle(
-                              color: Color(0xff718096), fontSize: 11)),
-                    ])),
-                  Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(230),
-                            borderRadius: BorderRadius.circular(7)),
-                        child: Text(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            paused ? FluentIcons.pause : FluentIcons.touch,
+                            size: 28,
+                            color: const Color(0xff2563eb).withAlpha(64),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
                             paused
-                                ? '●  已暂停'
+                                ? '手势采集已暂停'
                                 : recording
-                                    ? '●  正在录制'
-                                    : '●  触摸板实时轨迹',
+                                ? '请在触摸板上完成手势'
+                                : onStartRecording != null
+                                ? '点击画布录制手势'
+                                : '等待触摸板手势',
+                            style: const TextStyle(color: Color(0xff718096)),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '仅显示触摸板输入',
                             style: TextStyle(
-                                color: recording
-                                    ? Colors.red
-                                    : const Color(0xff2563eb),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600)),
-                      )),
-                ]),
+                              color: Color(0xff718096),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: FluentTheme.of(context).scaffoldBackgroundColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Text(
+                        paused
+                            ? '●  已暂停'
+                            : recording
+                            ? '●  正在录制'
+                            : '●  触摸板实时轨迹',
+                        style: TextStyle(
+                          color: recording
+                              ? Colors.red
+                              : const Color(0xff2563eb),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class TracePainter extends CustomPainter {
@@ -88,7 +136,7 @@ class TracePainter extends CustomPainter {
     Color(0xff0d9488),
     Color(0xff8b5cf6),
     Color(0xffea580c),
-    Color(0xffdb2777)
+    Color(0xffdb2777),
   ];
 
   @override
@@ -112,18 +160,25 @@ class TracePainter extends CustomPainter {
       }
       final color = _colors[i % _colors.length];
       canvas.drawPath(
-          path,
-          Paint()
-            ..color = color
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = grid ? 3 : 2
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round);
-      canvas.drawCircle(position(stroke.first), grid ? 4 : 2,
-          Paint()..color = color.withAlpha(128));
+        path,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = grid ? 3 : 2
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+      canvas.drawCircle(
+        position(stroke.first),
+        grid ? 4 : 2,
+        Paint()..color = color.withAlpha(128),
+      );
       if (grid) {
         canvas.drawCircle(
-            position(stroke.last), 8, Paint()..color = color.withAlpha(31));
+          position(stroke.last),
+          8,
+          Paint()..color = color.withAlpha(31),
+        );
         canvas.drawCircle(position(stroke.last), 3, Paint()..color = color);
       }
     }

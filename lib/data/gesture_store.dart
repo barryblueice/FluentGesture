@@ -8,8 +8,11 @@ class GestureStore {
   Future<void> _pending = Future.value();
   factory GestureStore.local() {
     final base = Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-    return GestureStore(File(
-        '$base${Platform.pathSeparator}FluentGesture${Platform.pathSeparator}gestures.json'));
+    return GestureStore(
+      File(
+        '$base${Platform.pathSeparator}FluentGesture${Platform.pathSeparator}gestures.json',
+      ),
+    );
   }
   static List<GestureTemplate> decode(String contents) {
     final root = jsonDecode(contents);
@@ -72,8 +75,10 @@ class GestureStore {
         rethrow;
       }
     });
-    _pending =
-        operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _pending = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
     return operation;
   }
 }

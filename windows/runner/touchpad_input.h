@@ -9,11 +9,12 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include "desktop_host.h"
 
 // HID descriptors determine report layout; no device-specific byte offsets.
 class TouchpadInput {
  public:
-  TouchpadInput(HWND window, flutter::BinaryMessenger* messenger);
+  TouchpadInput(HWND window, flutter::BinaryMessenger* messenger, DesktopHost& desktop);
   ~TouchpadInput();
   void HandleMessage(UINT message, WPARAM wparam, LPARAM lparam);
 
@@ -31,10 +32,12 @@ class TouchpadInput {
   Device* GetDevice(HANDLE handle);
   void ReadInput(HRAWINPUT input);
   void ReadReport(Device& device, char* report, ULONG length);
-  void Cancel();
+  void Cancel(const std::string& reason = "输入中断，本次手势已取消");
+  void Emit(const flutter::EncodableList& contacts);
   void Stop();
   void Status(const char* message);
   HWND window_;
+  DesktopHost& desktop_;
   bool registered_ = false;
   HANDLE active_device_ = nullptr;
   std::map<HANDLE, Device> devices_;

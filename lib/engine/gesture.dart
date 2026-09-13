@@ -14,15 +14,19 @@ class Point2 {
 
 class GestureSample {
   GestureSample(Iterable<Iterable<Point2>> strokes)
-      : strokes =
-            List.unmodifiable(strokes.map((s) => List<Point2>.unmodifiable(s)));
+    : strokes = List.unmodifiable(
+        strokes.map((s) => List<Point2>.unmodifiable(s)),
+      );
   final List<List<Point2>> strokes;
   bool get isValid =>
       strokes.isNotEmpty &&
       strokes.length <= 5 &&
-      strokes.every((s) =>
-          s.length >= 2 && s.length <= 4096 && s.every((p) => p.isFinite)) &&
-      strokes.any((s) => pathLength(s) > 0.015);
+      strokes.every(
+        (s) => s.isNotEmpty && s.length <= 4096 && s.every((p) => p.isFinite),
+      );
+
+  /// Small contact jitter is a tap, not a directional stroke.
+  bool get isTap => isValid && strokes.every((s) => pathLength(s) <= 0.015);
   List<Object> toJson() =>
       strokes.map((s) => s.map((p) => p.toJson()).toList()).toList();
 
@@ -31,7 +35,7 @@ class GestureSample {
       throw const FormatException('手势必须包含 1–5 条轨迹');
     }
     final strokes = value.map((stroke) {
-      if (stroke is! List || stroke.length < 2 || stroke.length > 4096) {
+      if (stroke is! List || stroke.isEmpty || stroke.length > 4096) {
         throw const FormatException('轨迹点数无效');
       }
       return stroke.map((point) {
@@ -41,8 +45,10 @@ class GestureSample {
             point[1] is! num) {
           throw const FormatException('坐标格式无效');
         }
-        final p =
-            Point2((point[0] as num).toDouble(), (point[1] as num).toDouble());
+        final p = Point2(
+          (point[0] as num).toDouble(),
+          (point[1] as num).toDouble(),
+        );
         if (!p.isFinite || p.x.abs() > 1e6 || p.y.abs() > 1e6) {
           throw const FormatException('坐标超出范围');
         }
@@ -50,7 +56,7 @@ class GestureSample {
       });
     });
     final sample = GestureSample(strokes);
-    if (!sample.isValid) throw const FormatException('手势轨迹过短');
+    if (!sample.isValid) throw const FormatException('手势轨迹无效');
     return sample;
   }
 }
@@ -82,9 +88,10 @@ List<Point2> resample(List<Point2> points, [int count = 48]) {
       segment++;
     }
     return clean[segment - 1].lerp(
-        clean[segment],
-        (target - distances[segment - 1]) /
-            (distances[segment] - distances[segment - 1]));
+      clean[segment],
+      (target - distances[segment - 1]) /
+          (distances[segment] - distances[segment - 1]),
+    );
   });
 }
 
@@ -97,8 +104,16 @@ GestureSample normalize(GestureSample sample) {
   final minY = points.map((p) => p.y).reduce(math.min);
   final maxY = points.map((p) => p.y).reduce(math.max);
   final scale = math.max(math.max(maxX - minX, maxY - minY), 1e-9);
-  return GestureSample(sample.strokes.map((s) => resample(s).map((p) => Point2(
-      (p.x - (minX + maxX) / 2) / scale, (p.y - (minY + maxY) / 2) / scale))));
+  return GestureSample(
+    sample.strokes.map(
+      (s) => resample(s).map(
+        (p) => Point2(
+          (p.x - (minX + maxX) / 2) / scale,
+          (p.y - (minY + maxY) / 2) / scale,
+        ),
+      ),
+    ),
+  );
 }
 
 /// Discrete Fréchet distance with O(m) working memory.
@@ -113,11 +128,15 @@ double frechet(List<Point2> a, List<Point2> b) {
         row[j] = distance;
       } else {
         row[j] = math.max(
-            distance,
+          distance,
+          math.min(
+            previous[j],
             math.min(
-                previous[j],
-                math.min(j > 0 ? previous[j - 1] : double.infinity,
-                    j > 0 ? row[j - 1] : double.infinity)));
+              j > 0 ? previous[j - 1] : double.infinity,
+              j > 0 ? row[j - 1] : double.infinity,
+            ),
+          ),
+        );
       }
     }
     previous = row;
@@ -143,7 +162,9 @@ class Recognition {
 class GestureRecognizer {
   double threshold = 0.25;
   Recognition recognize(
-      GestureSample sample, Iterable<GestureTemplate> templates) {
+    GestureSample sample,
+    Iterable<GestureTemplate> templates,
+  ) {
     if (!sample.isValid) return const Recognition(null, double.infinity, false);
     final query = normalize(sample);
     String? name;
@@ -151,6 +172,13 @@ class GestureRecognizer {
     for (final template in templates) {
       final strokes = template.normalized.strokes;
       if (strokes.length != query.strokes.length) continue;
+      if (sample.isTap != template.sample.isTap) continue;
+      if (sample.isTap) {
+        // Tap rules match contact count, independently of physical position.
+        best = 0;
+        name = template.name;
+        continue;
+      }
       final costs = query.strokes
           .map((a) => strokes.map((b) => frechet(a, b)).toList())
           .toList();
@@ -161,9 +189,13 @@ class GestureRecognizer {
         for (var col = 0; col < costs.length; col++) {
           if (used & (1 << col) == 0) {
             result = math.min(
-                result,
-                assign(row + 1, used | (1 << col),
-                    math.max(worst, costs[row][col])));
+              result,
+              assign(
+                row + 1,
+                used | (1 << col),
+                math.max(worst, costs[row][col]),
+              ),
+            );
           }
         }
         return result;

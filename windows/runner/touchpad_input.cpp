@@ -21,19 +21,20 @@ bool HasButton(const HIDP_BUTTON_CAPS& cap, USAGE page, USAGE usage) {
 }
 }
 
-TouchpadInput::TouchpadInput(HWND window, flutter::BinaryMessenger* messenger)
-    : window_(window) {
+TouchpadInput::TouchpadInput(HWND window, flutter::BinaryMessenger* messenger, DesktopHost& desktop)
+    : window_(window), desktop_(desktop) {
+  desktop_.on_cancel = [this](const std::string& reason) { Cancel(reason); };
   channel_ = std::make_unique<flutter::MethodChannel<Value>>(
       messenger, "dev.fluentgesture/input", &flutter::StandardMethodCodec::GetInstance());
   channel_->SetMethodCallHandler([this](const auto& call, auto result) {
     if (call.method_name() == "start") {
-      RAWINPUTDEVICE device{0x0D, 0x05, RIDEV_DEVNOTIFY, window_};
+      RAWINPUTDEVICE device{0x0D, 0x05, RIDEV_DEVNOTIFY | RIDEV_INPUTSINK, window_};
       if (!RegisterRawInputDevices(&device, 1, sizeof(device))) {
         result->Error("registration_failed", "Raw Input error " + std::to_string(GetLastError()));
         return;
       }
       registered_ = true;
-      result->Success(Value("Touchpad ready: waiting for compatible HID reports"));
+      result->Success(Value("已订阅触摸板输入，等待设备报告"));
     } else if (call.method_name() == "stop") {
       Stop(); result->Success();
     } else {
@@ -43,11 +44,13 @@ TouchpadInput::TouchpadInput(HWND window, flutter::BinaryMessenger* messenger)
 }
 
 TouchpadInput::~TouchpadInput() {
+  desktop_.on_cancel = nullptr;
   Stop();
   channel_->SetMethodCallHandler(nullptr);
 }
 
 void TouchpadInput::Stop() {
+  desktop_.CancelSession();
   if (registered_) {
     RAWINPUTDEVICE device{0x0D, 0x05, RIDEV_REMOVE, nullptr};
     RegisterRawInputDevices(&device, 1, sizeof(device));
@@ -61,12 +64,18 @@ void TouchpadInput::Status(const char* message) {
   channel_->InvokeMethod("status", std::make_unique<Value>(message));
 }
 
-void TouchpadInput::Cancel() {
+void TouchpadInput::Cancel(const std::string& reason) {
   for (auto& entry : devices_) {
     entry.second.pending.clear(); entry.second.expected = 0;
   }
   active_device_ = nullptr;
-  channel_->InvokeMethod("cancel", nullptr);
+  desktop_.CancelSession();
+  channel_->InvokeMethod("cancel", std::make_unique<Value>(reason));
+}
+
+void TouchpadInput::Emit(const List& contacts) {
+  auto frame = desktop_.Frame(contacts, active_device_);
+  if (frame) channel_->InvokeMethod("frame", std::move(frame));
 }
 
 void TouchpadInput::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
@@ -77,9 +86,7 @@ void TouchpadInput::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
     const auto handle = reinterpret_cast<HANDLE>(lparam);
     if (active_device_ == handle) Cancel();
     devices_.erase(handle);
-    Status("Touchpad disconnected; reconnect a compatible device");
-  } else if (message == WM_ACTIVATEAPP && !wparam) {
-    Cancel();
+    Status("触摸板已断开，请重新连接兼容设备");
   }
 }
 
@@ -102,7 +109,7 @@ TouchpadInput::Device* TouchpadInput::GetDevice(HANDLE handle) {
   device.buttons.resize(count);
   if (count != 0 && HidP_GetButtonCaps(HidP_Input, device.buttons.data(), &count, data) != HIDP_STATUS_SUCCESS) return nullptr;
   device.buttons.resize(count);
-  Status("Receiving precision touchpad input");
+  Status("正在接收精确式触摸板输入");
   return &devices_.emplace(handle, std::move(device)).first->second;
 }
 
@@ -118,7 +125,7 @@ void TouchpadInput::ReadInput(HRAWINPUT input) {
   const auto& hid = raw->data.hid;
   if (hid.dwSizeHid == 0 || hid.dwCount > (size - offset) / hid.dwSizeHid) return;
   auto device = GetDevice(raw->header.hDevice);
-  if (!device) { Status("Unsupported HID descriptor; a compatible precision touchpad is required"); return; }
+  if (!device) { Status("设备 HID 描述符不兼容，需要精确式触摸板"); return; }
   // Keep separate device sessions; never merge contacts from two touchpads.
   if (active_device_ != nullptr && active_device_ != raw->header.hDevice) Cancel();
   active_device_ = raw->header.hDevice;
@@ -151,7 +158,7 @@ void TouchpadInput::ReadReport(Device& device, char* report, ULONG length) {
   };
   ULONG count = 0, scan = 0;
   if (!value(0x0D, 0x54, 0, &count) || !value(0x0D, 0x56, 0, &scan)) return;
-  if (count > 5) { Cancel(); Status("Invalid contact count; frame discarded"); return; }
+  if (count > 5) { Cancel(); Status("触点数量无效，已丢弃输入帧"); return; }
   const auto now = GetTickCount64();
   if (device.expected != 0 && (scan != device.scan || now - device.last_report > 100)) {
     Cancel();  // An incomplete hybrid frame must never lift missing fingers.
@@ -161,7 +168,7 @@ void TouchpadInput::ReadReport(Device& device, char* report, ULONG length) {
     if (device.expected != 0) Cancel();
     device.pending.clear(); device.expected = count; device.scan = scan;
   } else if (device.expected == 0) {
-    channel_->InvokeMethod("frame", std::make_unique<Value>(List{}));
+    Emit(List{});
     return;
   }
   std::set<USHORT> collections;
@@ -198,7 +205,7 @@ void TouchpadInput::ReadReport(Device& device, char* report, ULONG length) {
           {Value("id"), Value(static_cast<int64_t>(contact.id))},
           {Value("x"), Value(contact.x)}, {Value("y"), Value(contact.y)}});
     }
-    channel_->InvokeMethod("frame", std::make_unique<Value>(contacts));
+    Emit(contacts);
     device.pending.clear(); device.expected = 0;
   }
 }

@@ -6,10 +6,21 @@ project(runner LANGUAGES CXX)
 # work.
 #
 # Any new source files that you add to the application should be added here.
+set(RUNNER_ENTRY "main.cpp")
+# The accessibility integration test uses an isolated host without the tray,
+# single-instance mutex, Raw Input or real action executor.
+file(STRINGS "${FLUTTER_MANAGED_DIR}/ephemeral/generated_config.cmake"
+  FLUTTER_DEFINES_LINE REGEX "DART_DEFINES=")
+# Base64 encoding of --dart-define=FLUENT_GESTURE_UI_TEST=true.
+if(FLUTTER_DEFINES_LINE MATCHES "RkxVRU5UX0dFU1RVUkVfVUlfVEVTVD10cnVl")
+  set(RUNNER_ENTRY "$<IF:$<CONFIG:Debug>,../../tests/accessibility/runner.cpp,main.cpp>")
+endif()
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "touchpad_input.cpp"
-  "main.cpp"
+  "desktop_host.cpp"
+  "shortcut_capture.cpp"
+  "${RUNNER_ENTRY}"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
@@ -36,6 +47,8 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "hid.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib" "ole32.lib" "uuid.lib" "wtsapi32.lib" "advapi32.lib")
+target_compile_options(${BINARY_NAME} PRIVATE /utf-8)
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
