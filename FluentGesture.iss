@@ -34,7 +34,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=yes
 DisableProgramGroupPage=yes
-LicenseFile=D:\Documents\test\FluentGesture\LICENSE
+LicenseFile=.\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -50,8 +50,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\Documents\test\FluentGesture\build\windows\x64\runner\Release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\Documents\test\FluentGesture\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\build\windows\x64\runner\Release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: ".\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Registry]
